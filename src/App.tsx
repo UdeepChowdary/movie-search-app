@@ -50,7 +50,7 @@ const App: React.FC = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <BrowserRouter>
+      <BrowserRouter basename="/movie-search-app">
         <Suspense
           fallback={
             <Box
