@@ -1,8 +1,8 @@
 import axios from 'axios';
-import { Movie, MovieDetail, SearchResponse } from '../types/Movie';
+import { MovieResponse } from '../types/Movie';
 
-const OMDB_API_KEY = process.env.REACT_APP_OMDB_KEY;
-const OMDB_API_URL = 'https://www.omdbapi.com';
+const API_KEY = process.env.REACT_APP_TMDB_API_KEY;
+const BASE_URL = 'https://api.themoviedb.org/3';
 
 // Cache for storing search results
 const searchCache = new Map<string, SearchResponse>();

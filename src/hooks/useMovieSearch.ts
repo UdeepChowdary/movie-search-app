@@ -51,25 +51,25 @@ export const useMovieSearch = (): UseMovieSearchReturn => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setMovies, setTotalResults, setError, setLoading]);
 
   const debouncedSearch = useCallback(
     debounce((query: string) => {
       setCurrentPage(1);
       handleSearch(query, 1);
     }, 500),
-    [handleSearch]
+    [handleSearch, setCurrentPage]
   );
 
   const search = useCallback((query: string) => {
     setSearchQuery(query);
     debouncedSearch(query);
-  }, [debouncedSearch]);
+  }, [debouncedSearch, setSearchQuery]);
 
   const changePage = useCallback((page: number) => {
     setCurrentPage(page);
     handleSearch(searchQuery, page);
-  }, [searchQuery, handleSearch]);
+  }, [searchQuery, handleSearch, setCurrentPage]);
 
   useEffect(() => {
     return () => {

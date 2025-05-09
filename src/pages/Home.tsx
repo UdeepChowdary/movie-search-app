@@ -12,7 +12,6 @@ const Home: React.FC = () => {
   const { movies, loading, error, totalResults, currentPage, search, changePage } = useMovieSearch();
 
   const query = searchParams.get('q') || '';
-  const page = parseInt(searchParams.get('page') || '1');
 
   useEffect(() => {
     if (query) {
