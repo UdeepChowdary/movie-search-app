@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   extends: ['react-app', 'react-app/jest'],
   rules: {
     '@typescript-eslint/no-unused-vars': 'warn',

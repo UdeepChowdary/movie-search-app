@@ -5,17 +5,34 @@
       "src": "package.json",
       "use": "@vercel/static-build",
       "config": {
-        "buildCommand": "npm run build",
-        "outputDirectory": "build",
-        "env": {
-          "NODE_OPTIONS": "--openssl-legacy-provider"
-        }
+        "distDir": "build",
+        "buildCommand": "npm run build"
       }
     }
   ],
   "routes": [
     {
-      "src": "/(.*)",
+      "src": "^/static/(.*)",
+      "dest": "/static/$1"
+    },
+    {
+      "src": "^/favicon.ico",
+      "dest": "/favicon.ico"
+    },
+    {
+      "src": "^/manifest.json",
+      "dest": "/manifest.json"
+    },
+    {
+      "src": "^/logo(.*).png",
+      "dest": "/logo$1.png"
+    },
+    {
+      "src": "^/movie-placeholder.svg",
+      "dest": "/movie-placeholder.svg"
+    },
+    {
+      "src": "^/(.*)",
       "dest": "/index.html"
     }
   ]
