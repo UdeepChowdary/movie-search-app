@@ -38,7 +38,7 @@ interface Filters {
 
 const Home: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { movies, loading, error, totalResults, currentPage, search, changePage } = useMovieSearch();
+  const { movies, loading, totalResults, currentPage, search, changePage } = useMovieSearch();
   const { favorites, isFavorite, toggleFavorite } = useFavorites();
   const { watchLater, isInWatchLater, addToWatchLater, removeFromWatchLater } = useWatchLater();
   

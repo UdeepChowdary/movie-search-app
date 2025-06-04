@@ -1,12 +1,13 @@
 import axios from 'axios';
 import { SearchResponse, MovieDetail } from '../types/Movie';
 
-// Corrected API configuration for OMDB
-const OMDB_API_KEY = '904c9a0d'; // Hardcoded API key for testing
-const OMDB_BASE_URL = 'http://www.omdbapi.com/';
+// API configuration for OMDB
+const OMDB_API_KEY = process.env.REACT_APP_OMDB_KEY || '';
+const OMDB_BASE_URL = 'https://www.omdbapi.com/';
 
-// Debug: Log the API key to ensure it's loaded
-console.log('OMDB API Key:', OMDB_API_KEY);
+if (!OMDB_API_KEY) {
+  console.warn('OMDB API key is not set. Please set REACT_APP_OMDB_KEY in your .env file.');
+}
 
 // The following TMDB related constants are not used for OMDB functionality as per README
 // const API_KEY = process.env.REACT_APP_TMDB_API_KEY;
