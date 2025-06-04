@@ -16,8 +16,7 @@ import {
   Button,
   IconButton,
   Tooltip,
-  Paper,
-  Divider
+
 } from '@mui/material';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import SortIcon from '@mui/icons-material/Sort';
@@ -110,9 +109,7 @@ const Home: React.FC = () => {
     return filteredMovies;
   }, [movies, activeTab, filters, isFavorite, watchLater]);
   
-  const displayTotalResults = activeTab === 'search' ? totalResults : displayMovies.length;
   const displayLoading = activeTab === 'search' && loading;
-  const displayError = activeTab === 'search' ? error : null;
   const displayNoResults = (activeTab === 'favorites' || activeTab === 'watchLater') && displayMovies.length === 0;
   const showPagination = activeTab === 'search' && totalResults > 0;
   const totalPages = Math.ceil(totalResults / 10);

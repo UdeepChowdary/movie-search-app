@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { debounce } from 'lodash';
 import { Movie } from '../types/Movie';
 import { searchMovies, SearchOptions } from '../services/api';
@@ -53,7 +53,7 @@ export const useMovieSearch = (): UseMovieSearchReturn => {
     }
   }, [setMovies, setTotalResults, setError, setLoading]);
 
-  const debouncedSearch = useCallback(
+  const debouncedSearch = useMemo(() => 
     debounce((query: string) => {
       setCurrentPage(1);
       handleSearch(query, 1);
