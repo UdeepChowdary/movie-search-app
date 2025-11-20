@@ -57,7 +57,7 @@ const MovieDetail: React.FC = () => {
 
   if (error || !movie) {
     return (
-      <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Container maxWidth="lg" sx={{ py: 6 }}>
         <ErrorMessage message={error || 'Movie not found'} />
       </Container>
     );
@@ -69,7 +69,7 @@ const MovieDetail: React.FC = () => {
         minHeight: '100vh',
         backgroundColor: '#141414',
         color: 'white',
-        padding: '40px 0',
+        padding: { xs: '32px 16px 40px', md: '48px 24px 56px' },
       }}
     >
       <Container maxWidth="lg">
@@ -87,7 +87,7 @@ const MovieDetail: React.FC = () => {
           Back to Search
         </Link>
 
-        <Grid container spacing={4}>
+        <Grid container spacing={{ xs: 3, md: 4 }} alignItems="flex-start">
           <Grid item xs={12} md={4}>
             <Paper
               sx={{
@@ -108,7 +108,14 @@ const MovieDetail: React.FC = () => {
           </Grid>
 
           <Grid item xs={12} md={8}>
-            <Typography variant="h3" component="h1" gutterBottom>
+            <Typography
+              variant="h3"
+              component="h1"
+              gutterBottom
+              sx={{
+                fontWeight: 'bold',
+              }}
+            >
               {movie.Title}
             </Typography>
 
@@ -139,7 +146,7 @@ const MovieDetail: React.FC = () => {
               )}
             </Box>
 
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
               Plot
             </Typography>
             <Typography paragraph>{movie.Plot}</Typography>

@@ -23,7 +23,7 @@ import { Movie } from '../types/Movie';
 
 interface MovieCardProps {
   movie: Movie;
-  onFavoriteToggle?: (imdbID: string, isFavorite: boolean) => void;
+  onFavoriteToggle?: (movie: Movie, isFavorite: boolean) => void;
   onWatchLaterToggle?: (movie: Movie) => void;
   isFavorite?: boolean;
   isInWatchLater?: boolean;
@@ -55,7 +55,7 @@ const MovieCard: React.FC<MovieCardProps> = ({
     const newFavoriteState = !isFavorite;
     setIsFavorite(newFavoriteState);
     if (onFavoriteToggle) {
-      onFavoriteToggle(movie.imdbID, newFavoriteState);
+      onFavoriteToggle(movie, newFavoriteState);
     }
   };
 

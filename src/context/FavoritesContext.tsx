@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { Movie } from '../types/Movie';
 
 interface FavoritesContextType {
-  favorites: string[];
-  toggleFavorite: (imdbID: string) => void;
+  favorites: Movie[];
+  toggleFavorite: (movie: Movie) => void;
   isFavorite: (imdbID: string) => boolean;
 }
 
@@ -11,14 +12,25 @@ const FavoritesContext = createContext<FavoritesContextType | undefined>(undefin
 const FAVORITES_KEY = 'movie-search-app-favorites';
 
 export const FavoritesProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [favorites, setFavorites] = useState<string[]>([]);
+  const [favorites, setFavorites] = useState<Movie[]>([]);
 
   // Load favorites from localStorage on mount
   useEffect(() => {
     try {
       const storedFavorites = localStorage.getItem(FAVORITES_KEY);
       if (storedFavorites) {
-        setFavorites(JSON.parse(storedFavorites));
+        const parsed = JSON.parse(storedFavorites);
+
+        if (Array.isArray(parsed)) {
+          if (parsed.length === 0) {
+            setFavorites([]);
+          } else if (typeof parsed[0] === 'string') {
+            // Legacy format (array of imdbIDs) – not compatible with Movie type, so reset
+            setFavorites([]);
+          } else {
+            setFavorites(parsed as Movie[]);
+          }
+        }
       }
     } catch (error) {
       console.error('Failed to load favorites from localStorage', error);
@@ -34,16 +46,17 @@ export const FavoritesProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
   }, [favorites]);
 
-  const toggleFavorite = (imdbID: string) => {
-    setFavorites(prev => 
-      prev.includes(imdbID)
-        ? prev.filter(id => id !== imdbID)
-        : [...prev, imdbID]
-    );
+  const toggleFavorite = (movie: Movie) => {
+    setFavorites(prev => {
+      const exists = prev.some(item => item.imdbID === movie.imdbID);
+      return exists
+        ? prev.filter(item => item.imdbID !== movie.imdbID)
+        : [...prev, movie];
+    });
   };
 
   const isFavorite = (imdbID: string) => {
-    return favorites.includes(imdbID);
+    return favorites.some(movie => movie.imdbID === imdbID);
   };
 
   return (

@@ -16,8 +16,10 @@ import {
   Button,
   IconButton,
   Tooltip,
-
+  Chip,
+  Stack,
 } from '@mui/material';
+
 import FilterListIcon from '@mui/icons-material/FilterList';
 import SortIcon from '@mui/icons-material/Sort';
 import { useFavorites } from '../context/FavoritesContext';
@@ -36,10 +38,14 @@ interface Filters {
   sortOrder: 'asc' | 'desc';
 }
 
+const RECENT_SEARCHES_KEY = 'movie-search-app-recent-searches';
+const MAX_RECENT_SEARCHES = 5;
+
 const Home: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { movies, loading, totalResults, currentPage, search, changePage } = useMovieSearch();
   const { favorites, isFavorite, toggleFavorite } = useFavorites();
+  
   const { watchLater, isInWatchLater, addToWatchLater, removeFromWatchLater } = useWatchLater();
   
   const [activeTab, setActiveTab] = useState<'search' | 'favorites' | 'watchLater'>(() => {
@@ -48,6 +54,7 @@ const Home: React.FC = () => {
   
   const [showFilters, setShowFilters] = useState(false);
   const query = searchParams.get('q') || '';
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
   
   const [filters, setFilters] = useState<Filters>(() => ({
     year: searchParams.get('y') || '',
@@ -55,6 +62,27 @@ const Home: React.FC = () => {
     sortBy: (searchParams.get('sortBy') as 'year' | 'title') || '',
     sortOrder: (searchParams.get('sortOrder') as 'asc' | 'desc') || 'asc',
   }));
+
+  // Load recent searches from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(RECENT_SEARCHES_KEY);
+      if (stored) {
+        setRecentSearches(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.error('Failed to load recent searches from localStorage', error);
+    }
+  }, []);
+
+  // Persist recent searches to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(recentSearches));
+    } catch (error) {
+      console.error('Failed to save recent searches to localStorage', error);
+    }
+  }, [recentSearches]);
 
   // Handle search when query or filters change
   useEffect(() => {
@@ -80,7 +108,7 @@ const Home: React.FC = () => {
     let filteredMovies = activeTab === 'watchLater' 
       ? [...watchLater]
       : activeTab === 'favorites'
-        ? movies.filter(movie => isFavorite(movie.imdbID))
+        ? [...favorites]
         : [...movies];
     
     // Apply filters
@@ -107,7 +135,7 @@ const Home: React.FC = () => {
     }
     
     return filteredMovies;
-  }, [movies, activeTab, filters, isFavorite, watchLater]);
+  }, [movies, activeTab, filters, favorites, watchLater]);
   
   const displayLoading = activeTab === 'search' && loading;
   const displayNoResults = (activeTab === 'favorites' || activeTab === 'watchLater') && displayMovies.length === 0;
@@ -139,6 +167,23 @@ const Home: React.FC = () => {
     }
   }, [searchParams, setSearchParams]);
 
+  const handleClearFilters = useCallback(() => {
+    setFilters(prev => ({
+      ...prev,
+      year: '',
+      type: '',
+      sortBy: '',
+      sortOrder: 'asc',
+    }));
+
+    const params = new URLSearchParams(searchParams);
+    params.delete('y');
+    params.delete('type');
+    params.delete('sortBy');
+    params.set('sortOrder', 'asc');
+    setSearchParams(params);
+  }, [searchParams, setSearchParams]);
+
   // Handle watch later toggle
   const handleWatchLaterToggle = useCallback((movie: Movie) => {
     if (isInWatchLater(movie.imdbID)) {
@@ -148,10 +193,32 @@ const Home: React.FC = () => {
     }
   }, [addToWatchLater, isInWatchLater, removeFromWatchLater]);
 
+  const handleFavoriteToggle = useCallback((movie: Movie) => {
+    toggleFavorite(movie);
+  }, [toggleFavorite]);
+
   // Handle search
   const handleSearch = useCallback((newQuery: string) => {
     const params = new URLSearchParams({
       q: newQuery,
+      page: '1',
+      ...(filters.year && { y: filters.year }),
+      ...(filters.type && { type: filters.type }),
+      ...(filters.sortBy && { sortBy: filters.sortBy }),
+      sortOrder: filters.sortOrder
+    });
+    setSearchParams(params);
+    if (newQuery.trim()) {
+      setRecentSearches(prev => {
+        const withoutCurrent = prev.filter(q => q.toLowerCase() !== newQuery.toLowerCase());
+        return [newQuery, ...withoutCurrent].slice(0, MAX_RECENT_SEARCHES);
+      });
+    }
+  }, [filters, setSearchParams, setRecentSearches]);
+
+  const handleRecentSearchClick = useCallback((value: string) => {
+    const params = new URLSearchParams({
+      q: value,
       page: '1',
       ...(filters.year && { y: filters.year }),
       ...(filters.type && { type: filters.type }),
@@ -181,8 +248,8 @@ const Home: React.FC = () => {
     >
       <Box
         sx={{
-          background: 'linear-gradient(to bottom, #000000, #141414)',
-          padding: '40px 20px 20px',
+          background: 'radial-gradient(circle at top, #1f1f1f 0, #000000 45%, #141414 100%)',
+          padding: { xs: '32px 16px 16px', md: '48px 24px 24px' },
           textAlign: 'center',
           marginBottom: 4,
           position: 'relative',
@@ -210,7 +277,7 @@ const Home: React.FC = () => {
               disabled={favorites.length === 0}
             />
             <Tab 
-              label="Watch Later"
+              label={`Watch Later ${watchLater.length > 0 ? `(${watchLater.length})` : ''}`}
               value="watchLater"
             />
           </Tabs>
@@ -230,7 +297,55 @@ const Home: React.FC = () => {
               >
                 Movie Search
               </Typography>
+              <Typography
+                variant="subtitle1"
+                sx={{
+                  mb: 3,
+                  color: 'rgba(255, 255, 255, 0.8)',
+                  maxWidth: 520,
+                  mx: 'auto',
+                }}
+              >
+                Discover movies, series, and episodes. Filter by year and type, and save your favorites to revisit later.
+              </Typography>
               <SearchBar onSearch={handleSearch} initialValue={query} />
+              {recentSearches.length > 0 && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      display: 'block',
+                      mb: 1,
+                      color: 'rgba(255, 255, 255, 0.6)',
+                    }}
+                  >
+                    Recent searches
+                  </Typography>
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    justifyContent="center"
+                    flexWrap="wrap"
+                    sx={{ gap: 1 }}
+                  >
+                    {recentSearches.map(term => (
+                      <Chip
+                        key={term}
+                        label={term}
+                        size="small"
+                        onClick={() => handleRecentSearchClick(term)}
+                        sx={{
+                          backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                          color: 'white',
+                          '&:hover': {
+                            backgroundColor: 'rgba(255, 255, 255, 0.16)',
+                          },
+                        }}
+                      />
+                    ))}
+                  </Stack>
+                </Box>
+              )}
               
               <Box sx={{ mt: 3, mb: 2 }}>
                 <Button
@@ -243,7 +358,27 @@ const Home: React.FC = () => {
                 </Button>
                 
                 {showFilters && (
-                  <Box sx={{ mt: 2, p: 2, backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: 1 }}>
+                  <Box
+                    sx={{
+                      mt: 2,
+                      p: { xs: 2, md: 3 },
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      borderRadius: 2,
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                    }}
+                  >
+                    <Typography
+                      variant="subtitle2"
+                      sx={{
+                        mb: 2,
+                        textAlign: 'left',
+                        textTransform: 'uppercase',
+                        letterSpacing: 1,
+                        color: 'rgba(255, 255, 255, 0.7)',
+                      }}
+                    >
+                      Filters
+                    </Typography>
                     <Grid container spacing={2} alignItems="center">
                       <Grid item xs={12} sm={6} md={3}>
                         <FormControl fullWidth size="small">
@@ -317,6 +452,16 @@ const Home: React.FC = () => {
                         </Tooltip>
                       </Grid>
                     </Grid>
+                    <Box sx={{ mt: 2, textAlign: 'right' }}>
+                      <Button
+                        size="small"
+                        color="inherit"
+                        onClick={handleClearFilters}
+                        disabled={!filters.year && !filters.type && !filters.sortBy && filters.sortOrder === 'asc'}
+                      >
+                        Clear filters
+                      </Button>
+                    </Box>
                   </Box>
                 )}
               </Box>
@@ -338,7 +483,7 @@ const Home: React.FC = () => {
               <MovieGrid
                 movies={displayMovies}
                 loading={displayLoading}
-                onFavoriteToggle={toggleFavorite}
+                onFavoriteToggle={handleFavoriteToggle}
                 onWatchLaterToggle={handleWatchLaterToggle}
                 isFavorite={isFavorite}
                 isInWatchLater={isInWatchLater}
