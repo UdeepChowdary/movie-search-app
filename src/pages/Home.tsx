@@ -483,11 +483,19 @@ const Home: React.FC = () => {
               <MovieGrid
                 movies={displayMovies}
                 loading={displayLoading}
-                onFavoriteToggle={handleFavoriteToggle}
-                onWatchLaterToggle={handleWatchLaterToggle}
+                onFavoriteToggle={
+                  activeTab === 'search' || activeTab === 'favorites'
+                    ? handleFavoriteToggle
+                    : undefined
+                }
+                onWatchLaterToggle={
+                  activeTab === 'search' || activeTab === 'watchLater'
+                    ? handleWatchLaterToggle
+                    : undefined
+                }
                 isFavorite={isFavorite}
                 isInWatchLater={isInWatchLater}
-                showWatchLater={activeTab !== 'watchLater'}
+                showWatchLater={activeTab === 'search' || activeTab === 'watchLater'}
               />
 
               {showPagination && (
