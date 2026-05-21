@@ -35,8 +35,9 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        gap: 1,
-        marginTop: 4,
+        gap: 1.5,
+        marginTop: 6,
+        marginBottom: 2,
       }}
     >
       <Button
@@ -45,33 +46,65 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
         onClick={() => onPageChange(currentPage - 1)}
         disabled={currentPage === 1}
         sx={{
-          color: 'white',
-          borderColor: 'rgba(255, 255, 255, 0.3)',
+          borderRadius: '20px',
+          color: currentPage === 1 ? 'rgba(255,255,255,0.2)' : '#F3F4F6',
+          backgroundColor: 'rgba(22, 26, 36, 0.3)',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          backdropFilter: 'blur(8px)',
+          padding: '8px 18px',
           '&:hover': {
-            borderColor: 'white',
+            backgroundColor: 'rgba(22, 26, 36, 0.6)',
+            borderColor: '#00F2FE',
+            color: '#00F2FE',
+            transform: 'translateX(-2px)',
           },
+          '&.Mui-disabled': {
+            borderColor: 'rgba(255, 255, 255, 0.03)',
+            backgroundColor: 'rgba(255, 255, 255, 0.01)',
+          }
         }}
       >
-        Previous
+        Prev
       </Button>
 
-      {getVisiblePages().map((page) => (
-        <Button
-          key={page}
-          variant={currentPage === page ? 'contained' : 'outlined'}
-          onClick={() => onPageChange(page)}
-          sx={{
-            minWidth: '40px',
-            color: currentPage === page ? 'white' : 'rgba(255, 255, 255, 0.7)',
-            borderColor: 'rgba(255, 255, 255, 0.3)',
-            '&:hover': {
-              borderColor: 'white',
-            },
-          }}
-        >
-          {page}
-        </Button>
-      ))}
+      {getVisiblePages().map((page) => {
+        const isActive = currentPage === page;
+        return (
+          <Button
+            key={page}
+            onClick={() => onPageChange(page)}
+            sx={{
+              width: '40px',
+              height: '40px',
+              minWidth: '40px',
+              borderRadius: '50%',
+              fontFamily: '"Outfit", sans-serif',
+              fontWeight: 600,
+              fontSize: '0.95rem',
+              color: isActive ? '#ffffff' : 'rgba(255, 255, 255, 0.7)',
+              background: isActive 
+                ? 'linear-gradient(135deg, #FF3366 0%, #FF5E36 100%)' 
+                : 'rgba(22, 26, 36, 0.3)',
+              border: isActive 
+                ? 'none' 
+                : '1px solid rgba(255, 255, 255, 0.06)',
+              boxShadow: isActive ? '0 4px 15px 0 rgba(255, 51, 102, 0.35)' : 'none',
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              '&:hover': {
+                transform: 'scale(1.15)',
+                background: isActive 
+                  ? 'linear-gradient(135deg, #FF5E36 0%, #FF3366 100%)' 
+                  : 'rgba(22, 26, 36, 0.6)',
+                borderColor: isActive ? 'none' : '#00F2FE',
+                color: isActive ? '#ffffff' : '#00F2FE',
+                boxShadow: isActive ? '0 6px 20px 0 rgba(255, 51, 102, 0.5)' : 'none',
+              },
+            }}
+          >
+            {page}
+          </Button>
+        );
+      })}
 
       <Button
         variant="outlined"
@@ -79,11 +112,22 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
         onClick={() => onPageChange(currentPage + 1)}
         disabled={currentPage === totalPages}
         sx={{
-          color: 'white',
-          borderColor: 'rgba(255, 255, 255, 0.3)',
+          borderRadius: '20px',
+          color: currentPage === totalPages ? 'rgba(255,255,255,0.2)' : '#F3F4F6',
+          backgroundColor: 'rgba(22, 26, 36, 0.3)',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          backdropFilter: 'blur(8px)',
+          padding: '8px 18px',
           '&:hover': {
-            borderColor: 'white',
+            backgroundColor: 'rgba(22, 26, 36, 0.6)',
+            borderColor: '#00F2FE',
+            color: '#00F2FE',
+            transform: 'translateX(2px)',
           },
+          '&.Mui-disabled': {
+            borderColor: 'rgba(255, 255, 255, 0.03)',
+            backgroundColor: 'rgba(255, 255, 255, 0.01)',
+          }
         }}
       >
         Next
