@@ -1,4 +1,4 @@
-import React, { useState, ChangeEvent, FormEvent, useEffect, useRef, useCallback } from 'react';
+import React, { useState, ChangeEvent, FormEvent, useEffect, useRef, useMemo } from 'react';
 import { TextField, IconButton, InputAdornment, Paper, Box, Typography, CircularProgress } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import ClearIcon from '@mui/icons-material/Clear';
@@ -34,29 +34,30 @@ const SearchBar: React.FC<SearchBarProps> = ({ onSearch, initialValue = '' }) =>
   }, []);
 
   // Debounced autocomplete search
-  const fetchSuggestions = useCallback(
-    debounce(async (value: string) => {
-      const cleanValue = value.trim();
-      if (cleanValue.length < 3) {
-        setSuggestions([]);
-        setSuggestionLoading(false);
-        return;
-      }
-      setSuggestionLoading(true);
-      try {
-        const response = await searchMovies(cleanValue, 1);
-        if (response.Response === 'True') {
-          setSuggestions((response.Search || []).slice(0, 6)); // limit to 6 for sleek aesthetic
-        } else {
+  const fetchSuggestions = useMemo(
+    () =>
+      debounce(async (value: string) => {
+        const cleanValue = value.trim();
+        if (cleanValue.length < 3) {
           setSuggestions([]);
+          setSuggestionLoading(false);
+          return;
         }
-      } catch (err) {
-        console.error('Autocomplete suggestions fetch error:', err);
-        setSuggestions([]);
-      } finally {
-        setSuggestionLoading(false);
-      }
-    }, 350),
+        setSuggestionLoading(true);
+        try {
+          const response = await searchMovies(cleanValue, 1);
+          if (response.Response === 'True') {
+            setSuggestions((response.Search || []).slice(0, 6)); // limit to 6 for sleek aesthetic
+          } else {
+            setSuggestions([]);
+          }
+        } catch (err) {
+          console.error('Autocomplete suggestions fetch error:', err);
+          setSuggestions([]);
+        } finally {
+          setSuggestionLoading(false);
+        }
+      }, 350),
     []
   );
 
