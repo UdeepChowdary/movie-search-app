@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme, CssBaseline, CircularProgress, Box } from '@mui/material';
 import { FavoritesProvider } from './context/FavoritesContext';
 import { WatchLaterProvider } from './context/WatchLaterContext';
+import { JournalProvider } from './context/JournalContext';
 import BackToTop from './components/BackToTop';
 
 // Lazy loaded components
@@ -149,29 +150,31 @@ const App: React.FC = () => {
       <CssBaseline />
       <FavoritesProvider>
         <WatchLaterProvider>
-          <BrowserRouter>
-            <Suspense
-              fallback={
-                <Box
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    minHeight: '100vh',
-                    backgroundColor: '#141414',
-                  }}
-                >
-                  <CircularProgress />
-                </Box>
-              }
-            >
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/movie/:id" element={<MovieDetail />} />
-              </Routes>
-            </Suspense>
-          </BrowserRouter>
-          <BackToTop />
+          <JournalProvider>
+            <BrowserRouter>
+              <Suspense
+                fallback={
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      minHeight: '100vh',
+                      backgroundColor: '#141414',
+                    }}
+                  >
+                    <CircularProgress />
+                  </Box>
+                }
+              >
+                <Routes>
+                  <Route path="/" element={<Home />} />
+                  <Route path="/movie/:id" element={<MovieDetail />} />
+                </Routes>
+              </Suspense>
+            </BrowserRouter>
+            <BackToTop />
+          </JournalProvider>
         </WatchLaterProvider>
       </FavoritesProvider>
     </ThemeProvider>

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   Container,
@@ -10,6 +10,9 @@ import {
   Button,
   Tooltip,
   Fade,
+  IconButton,
+  TextField,
+  CircularProgress,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import {
@@ -22,11 +25,16 @@ import {
   Schedule,
   Public,
   Language as LanguageIcon,
+  Close as CloseIcon,
+  Delete as DeleteIcon,
+  CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 import { useMovieDetail } from '../hooks/useMovieDetail';
 import { useFavorites } from '../context/FavoritesContext';
 import { useWatchLater } from '../context/WatchLaterContext';
+import { useJournal } from '../context/JournalContext';
 import { Movie } from '../types/Movie';
+import { searchMovies } from '../services/api';
 import ErrorMessage from '../components/ErrorMessage';
 
 // Premium Rating Circle Gauge Component
@@ -156,12 +164,57 @@ const MovieDetail: React.FC = () => {
   const { movie, loading, error, fetchMovieDetails } = useMovieDetail();
   const { isFavorite, toggleFavorite } = useFavorites();
   const { isInWatchLater, addToWatchLater, removeFromWatchLater } = useWatchLater();
+  const { getEntry, addOrUpdateEntry, deleteEntry } = useJournal();
+
+  // Autocomplete suggestions and trailer panel states
+  const [isTrailerOpen, setIsTrailerOpen] = useState(false);
+  const [relatedMovies, setRelatedMovies] = useState<Movie[]>([]);
+  const [relatedLoading, setRelatedLoading] = useState(false);
+
+  // Journal note states
+  const [userRating, setUserRating] = useState(0);
+  const [userNotes, setUserNotes] = useState('');
+  const [hoverStar, setHoverStar] = useState(-1);
+  const [isSaved, setIsSaved] = useState(false);
 
   useEffect(() => {
     if (id) {
       fetchMovieDetails(id);
     }
   }, [id, fetchMovieDetails]);
+
+  // Sync journal notes when movie updates
+  useEffect(() => {
+    if (movie) {
+      const entry = getEntry(movie.imdbID);
+      setUserRating(entry ? entry.rating : 0);
+      setUserNotes(entry ? entry.notes : '');
+      setIsSaved(false);
+    }
+  }, [movie, getEntry]);
+
+  // Fetch related genre suggestions
+  useEffect(() => {
+    const fetchRelated = async () => {
+      if (!movie || !movie.Genre || movie.Genre === 'N/A') return;
+      setRelatedLoading(true);
+      try {
+        const firstGenre = movie.Genre.split(',')[0].trim();
+        const response = await searchMovies(firstGenre, 1);
+        if (response.Response === 'True') {
+          const filtered = (response.Search || []).filter(
+            (m) => m.imdbID !== movie.imdbID
+          );
+          setRelatedMovies(filtered.slice(0, 6));
+        }
+      } catch (err) {
+        console.error('Failed to load related movies:', err);
+      } finally {
+        setRelatedLoading(false);
+      }
+    };
+    fetchRelated();
+  }, [movie]);
 
   // Dynamic values for action handling
   const movieAsMovie: Movie | null = movie
@@ -190,6 +243,22 @@ const MovieDetail: React.FC = () => {
       } else {
         addToWatchLater(movieAsMovie);
       }
+    }
+  };
+
+  const handleSaveJournal = () => {
+    if (movie) {
+      addOrUpdateEntry(movie.imdbID, movie.Title, movie.Poster, userRating, userNotes);
+      setIsSaved(true);
+      setTimeout(() => setIsSaved(false), 2000);
+    }
+  };
+
+  const handleDeleteJournal = () => {
+    if (movie) {
+      deleteEntry(movie.imdbID);
+      setUserRating(0);
+      setUserNotes('');
     }
   };
 
@@ -388,6 +457,33 @@ const MovieDetail: React.FC = () => {
                 />
               </Paper>
 
+              {/* Watch Trailer Main Button */}
+              <Button
+                fullWidth
+                onClick={() => setIsTrailerOpen(true)}
+                variant="contained"
+                sx={{
+                  borderRadius: '16px',
+                  py: 1.8,
+                  mb: 2.5,
+                  fontSize: '0.95rem',
+                  fontWeight: 800,
+                  letterSpacing: '0.5px',
+                  background: 'linear-gradient(135deg, #FF3366 0%, #FF5E36 100%)',
+                  color: '#ffffff',
+                  boxShadow: '0 8px 20px rgba(255, 51, 102, 0.25)',
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, #FF5E36 0%, #FF3366 100%)',
+                    boxShadow: '0 8px 25px rgba(255, 51, 102, 0.45)',
+                    transform: 'translateY(-2px)',
+                  },
+                  transition: 'all 0.3s ease',
+                }}
+                startIcon={<Typography component="span" sx={{ fontSize: '1.2rem', mr: 0.5 }}>🎬</Typography>}
+              >
+                Watch Trailer
+              </Button>
+
               {/* Action Buttons Panel */}
               <Grid container spacing={2}>
                 <Grid item xs={6}>
@@ -502,16 +598,16 @@ const MovieDetail: React.FC = () => {
                 />
                 {movie.Rated && movie.Rated !== 'N/A' && (
                   <Chip
-                    label={movie.Rated}
-                    sx={{
-                      fontFamily: '"Outfit", sans-serif',
-                      fontWeight: 700,
-                      fontSize: '0.8rem',
-                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                      color: '#E5E7EB',
-                      borderRadius: '8px',
-                    }}
+                     label={movie.Rated}
+                     sx={{
+                       fontFamily: '"Outfit", sans-serif',
+                       fontWeight: 700,
+                       fontSize: '0.8rem',
+                       backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                       border: '1px solid rgba(255, 255, 255, 0.1)',
+                       color: '#E5E7EB',
+                       borderRadius: '8px',
+                     }}
                   />
                 )}
                 {movie.Runtime && movie.Runtime !== 'N/A' && (
@@ -717,7 +813,7 @@ const MovieDetail: React.FC = () => {
                     gap: 3.5,
                     position: 'relative',
                     overflow: 'hidden',
-                    mb: 2,
+                    mb: 5.5,
                     '&::before': {
                       content: '""',
                       position: 'absolute',
@@ -769,10 +865,346 @@ const MovieDetail: React.FC = () => {
                   </Box>
                 </Box>
               )}
+
+              {/* Premium CineLog Review / Notes Panel */}
+              <Box
+                sx={{
+                  p: 3.5,
+                  borderRadius: '24px',
+                  backgroundColor: 'rgba(22, 26, 36, 0.4)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  backdropFilter: 'blur(20px)',
+                  WebkitBackdropFilter: 'blur(20px)',
+                  boxShadow: '0 12px 32px rgba(0, 0, 0, 0.25)',
+                  mb: 5.5,
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}
+              >
+                <Typography
+                  variant="h6"
+                  sx={{
+                    fontFamily: '"Outfit", sans-serif',
+                    fontWeight: 800,
+                    color: '#00F2FE',
+                    mb: 2.2,
+                    fontSize: '1.25rem',
+                    letterSpacing: '0.25px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                  }}
+                >
+                  <span>✍️</span> My CineLog Diary Entry
+                </Typography>
+
+                {/* Stars Rating Selector */}
+                <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.6)', mb: 1, fontWeight: 600 }}>
+                  Personal Rating
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 0.6, mb: 3.5 }}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star
+                      key={star}
+                      onMouseEnter={() => setHoverStar(star)}
+                      onMouseLeave={() => setHoverStar(-1)}
+                      onClick={() => setUserRating(star)}
+                      sx={{
+                        fontSize: '2.1rem',
+                        cursor: 'pointer',
+                        color: (hoverStar >= star || (hoverStar === -1 && userRating >= star))
+                          ? '#FFD700'
+                          : 'rgba(255, 255, 255, 0.12)',
+                        filter: (hoverStar >= star || (hoverStar === -1 && userRating >= star))
+                          ? 'drop-shadow(0px 0px 8px rgba(255, 215, 0, 0.4))'
+                          : 'none',
+                        transition: 'all 0.2s ease',
+                        '&:hover': {
+                          transform: 'scale(1.2)',
+                        },
+                      }}
+                    />
+                  ))}
+                </Box>
+
+                {/* Notes Input Field */}
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={4}
+                  placeholder="Share your thoughts, viewing environment, or a quick summary review of this film..."
+                  value={userNotes}
+                  onChange={(e) => setUserNotes(e.target.value)}
+                  sx={{
+                    mb: 3,
+                    '& .MuiOutlinedInput-root': {
+                      backgroundColor: 'rgba(8, 9, 12, 0.35)',
+                      borderRadius: '16px',
+                      color: 'white',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      transition: 'border 0.3s ease',
+                      fontFamily: '"Inter", sans-serif',
+                      fontSize: '0.96rem',
+                      '& fieldset': { border: 'none' },
+                      '&:hover': {
+                        border: '1px solid rgba(0, 242, 254, 0.25)',
+                      },
+                      '&.Mui-focused': {
+                        border: '1px solid #00F2FE',
+                      },
+                    },
+                    '& .MuiInputBase-input': {
+                      '&::placeholder': {
+                        color: 'rgba(255, 255, 255, 0.35)',
+                        opacity: 1,
+                      },
+                    },
+                  }}
+                />
+
+                {/* Save and Delete CTA Controls */}
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                  <Button
+                    onClick={handleSaveJournal}
+                    disabled={userRating === 0 && !userNotes.trim()}
+                    sx={{
+                      borderRadius: '12px',
+                      px: 3.5,
+                      py: 1.2,
+                      fontWeight: 700,
+                      background: isSaved 
+                        ? 'linear-gradient(135deg, #00FF87 0%, #60EFFF 100%)' 
+                        : 'linear-gradient(135deg, #00F2FE 0%, #4FACFE 100%)',
+                      color: isSaved ? '#08090C' : 'white',
+                      '&:hover': {
+                        boxShadow: '0 4px 15px rgba(0, 242, 254, 0.35)',
+                        transform: 'translateY(-1px)',
+                      },
+                      '&:disabled': {
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        color: 'rgba(255, 255, 255, 0.2)',
+                      },
+                      transition: 'all 0.3s ease',
+                    }}
+                    startIcon={isSaved ? <CheckCircleIcon /> : undefined}
+                  >
+                    {isSaved ? 'Logged!' : 'Save Entry'}
+                  </Button>
+
+                  {(userRating > 0 || userNotes.trim().length > 0) && (
+                    <Button
+                      onClick={handleDeleteJournal}
+                      startIcon={<DeleteIcon />}
+                      sx={{
+                        borderRadius: '12px',
+                        px: 3,
+                        py: 1.2,
+                        color: 'rgba(255, 51, 102, 0.8)',
+                        border: '1px solid rgba(255, 51, 102, 0.2)',
+                        '&:hover': {
+                          backgroundColor: 'rgba(255, 51, 102, 0.08)',
+                          borderColor: '#FF3366',
+                          color: '#FF3366',
+                        },
+                        transition: 'all 0.3s ease',
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  )}
+                </Box>
+              </Box>
             </Grid>
           </Grid>
+
+          {/* Related Recommendations Slider Section */}
+          {(relatedLoading || relatedMovies.length > 0) && (
+            <Box sx={{ mt: 10, pt: 6, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <Typography
+                variant="h4"
+                sx={{
+                  fontFamily: '"Outfit", sans-serif',
+                  fontWeight: 900,
+                  color: 'white',
+                  mb: 4,
+                  fontSize: { xs: '1.65rem', sm: '2.1rem' },
+                  letterSpacing: '-0.5px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1.5,
+                }}
+              >
+                <Typography component="span" sx={{ fontSize: '2rem', filter: 'drop-shadow(0 0 8px rgba(0,242,254,0.4))' }}>✨</Typography>
+                More Like This
+              </Typography>
+
+              {relatedLoading ? (
+                <Box sx={{ py: 6, display: 'flex', justifyContent: 'center' }}>
+                  <CircularProgress size={32} sx={{ color: '#00F2FE' }} />
+                </Box>
+              ) : (
+                <Box
+                  sx={{
+                    display: 'flex',
+                    gap: 3,
+                    overflowX: 'auto',
+                    pb: 3,
+                    pt: 1.2,
+                    '&::-webkit-scrollbar': {
+                      height: '6px',
+                    },
+                    '&::-webkit-scrollbar-thumb': {
+                      backgroundColor: 'rgba(0, 242, 254, 0.25)',
+                      borderRadius: '3px',
+                      '&:hover': {
+                        backgroundColor: 'rgba(0, 242, 254, 0.5)',
+                      },
+                    },
+                  }}
+                >
+                  {relatedMovies.map((m) => (
+                    <Box
+                      key={m.imdbID}
+                      component={Link}
+                      to={`/movie/${m.imdbID}`}
+                      sx={{
+                        flex: '0 0 170px',
+                        textDecoration: 'none',
+                        color: 'inherit',
+                        '&:hover .related-poster': {
+                          transform: 'translateY(-6px) scale(1.03)',
+                          boxShadow: '0 12px 30px rgba(0, 242, 254, 0.25)',
+                          borderColor: 'rgba(0, 242, 254, 0.4)',
+                        },
+                        transition: 'all 0.3s ease',
+                      }}
+                    >
+                      <Paper
+                        className="related-poster"
+                        sx={{
+                          width: '100%',
+                          height: '240px',
+                          borderRadius: '16px',
+                          overflow: 'hidden',
+                          border: '1px solid rgba(255, 255, 255, 0.08)',
+                          backgroundImage: `url(${m.Poster !== 'N/A' ? m.Poster : '/movie-placeholder.svg'})`,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                          mb: 1.8,
+                          transition: 'all 0.3s ease',
+                          boxShadow: '0 8px 20px rgba(0,0,0,0.4)',
+                        }}
+                      />
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontFamily: '"Outfit", sans-serif',
+                          fontWeight: 700,
+                          color: '#F3F4F6',
+                          fontSize: '0.88rem',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          lineHeight: 1.3,
+                        }}
+                      >
+                        {m.Title}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{ color: 'rgba(255, 255, 255, 0.45)', mt: 0.5, display: 'block', fontWeight: 500 }}
+                      >
+                        {m.Year}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              )}
+            </Box>
+          )}
         </Container>
       </Fade>
+
+      {/* Trailer Glassmorphic Lightbox Overlay Modal */}
+      {isTrailerOpen && (
+        <Box
+          onClick={() => setIsTrailerOpen(false)}
+          sx={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(5, 7, 10, 0.88)',
+            backdropFilter: 'blur(35px)',
+            WebkitBackdropFilter: 'blur(35px)',
+            zIndex: 9999,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            p: { xs: 2, sm: 4, md: 8 },
+            animation: 'fadeIn 0.3s ease',
+            '@keyframes fadeIn': {
+              from: { opacity: 0 },
+              to: { opacity: 1 },
+            },
+          }}
+        >
+          <Box
+            onClick={(e) => e.stopPropagation()}
+            sx={{
+              position: 'relative',
+              width: '100%',
+              maxWidth: '960px',
+              aspectRatio: '16/9',
+              borderRadius: '24px',
+              overflow: 'hidden',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              boxShadow: '0 24px 64px rgba(0, 0, 0, 0.8), 0 0 50px rgba(0, 242, 254, 0.15)',
+              backgroundColor: '#000000',
+              animation: 'zoomIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              '@keyframes zoomIn': {
+                from: { transform: 'scale(0.9)', opacity: 0 },
+                to: { transform: 'scale(1)', opacity: 1 },
+              },
+            }}
+          >
+            {/* Close trigger button inside iframe container */}
+            <IconButton
+              onClick={() => setIsTrailerOpen(false)}
+              sx={{
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                color: 'white',
+                backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                zIndex: 10,
+                '&:hover': {
+                  backgroundColor: 'rgba(255, 51, 102, 0.8)',
+                  transform: 'rotate(90deg) scale(1.1)',
+                },
+                transition: 'all 0.3s ease',
+              }}
+            >
+              <CloseIcon />
+            </IconButton>
+
+            <iframe
+              title={`${movie.Title} Official Trailer`}
+              src={`https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(
+                movie.Title + ' official trailer'
+              )}&autoplay=1`}
+              allow="autoplay; encrypted-media"
+              allowFullScreen
+              style={{
+                width: '100%',
+                height: '100%',
+                border: 'none',
+              }}
+            />
+          </Box>
+        </Box>
+      )}
     </Box>
   );
 };

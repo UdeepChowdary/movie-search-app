@@ -22,8 +22,17 @@ import {
 
 import FilterListIcon from '@mui/icons-material/FilterList';
 import SortIcon from '@mui/icons-material/Sort';
+import QueryStatsIcon from '@mui/icons-material/QueryStats';
+import StarIcon from '@mui/icons-material/Star';
+import MovieIcon from '@mui/icons-material/Movie';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import FavoriteIcon from '@mui/icons-material/Favorite';
+import BookmarkIcon from '@mui/icons-material/Bookmark';
+
 import { useFavorites } from '../context/FavoritesContext';
 import { useWatchLater } from '../context/WatchLaterContext';
+import { useJournal } from '../context/JournalContext';
+import { getMovieDetails } from '../services/api';
 import { Movie } from '../types/Movie';
 import SearchBar from '../components/SearchBar';
 import MovieGrid from '../components/MovieGrid';
@@ -45,11 +54,11 @@ const Home: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { movies, loading, totalResults, currentPage, search, changePage } = useMovieSearch();
   const { favorites, isFavorite, toggleFavorite } = useFavorites();
-  
   const { watchLater, isInWatchLater, addToWatchLater, removeFromWatchLater } = useWatchLater();
+  const { journalEntries } = useJournal();
   
-  const [activeTab, setActiveTab] = useState<'search' | 'favorites' | 'watchLater'>(() => {
-    return (searchParams.get('tab') as 'search' | 'favorites' | 'watchLater') || 'search';
+  const [activeTab, setActiveTab] = useState<'search' | 'favorites' | 'watchLater' | 'stats'>(() => {
+    return (searchParams.get('tab') as 'search' | 'favorites' | 'watchLater' | 'stats') || 'search';
   });
   
   const [showFilters, setShowFilters] = useState(false);
@@ -62,6 +71,60 @@ const Home: React.FC = () => {
     sortBy: (searchParams.get('sortBy') as 'year' | 'title') || '',
     sortOrder: (searchParams.get('sortOrder') as 'asc' | 'desc') || 'asc',
   }));
+
+  // Local storage cache for complete movie details (genres, runtimes)
+  const [detailsCache, setDetailsCache] = useState<Record<string, { Genre?: string; Runtime?: string; Year?: string; Title?: string }>>(() => {
+    try {
+      const stored = localStorage.getItem('movie-details-cache');
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Fetch missing details for stats calculations
+  useEffect(() => {
+    const fetchMissingDetails = async () => {
+      const allIds = Array.from(new Set([
+        ...favorites.map(m => m.imdbID),
+        ...watchLater.map(m => m.imdbID),
+        ...journalEntries.map(e => e.imdbID)
+      ]));
+
+      const missingIds = allIds.filter(id => !detailsCache[id]);
+      if (missingIds.length === 0) return;
+
+      const newDetails = { ...detailsCache };
+      let updated = false;
+
+      // Fetch a maximum of 8 missing details sequentially to prevent rate limits
+      const idsToFetch = missingIds.slice(0, 8);
+
+      for (const id of idsToFetch) {
+        try {
+          const detail = await getMovieDetails(id);
+          if (detail && detail.Response === 'True') {
+            newDetails[id] = {
+              Genre: detail.Genre,
+              Runtime: detail.Runtime,
+              Year: detail.Year,
+              Title: detail.Title,
+            };
+            updated = true;
+          }
+        } catch (err) {
+          console.error(`Failed to fetch details for ${id}`, err);
+        }
+      }
+
+      if (updated) {
+        setDetailsCache(newDetails);
+        localStorage.setItem('movie-details-cache', JSON.stringify(newDetails));
+      }
+    };
+
+    fetchMissingDetails();
+  }, [favorites, watchLater, journalEntries, detailsCache]);
 
   // Load recent searches from localStorage on mount
   useEffect(() => {
@@ -108,6 +171,9 @@ const Home: React.FC = () => {
     if (activeTab === 'search') {
       return [...movies];
     }
+    if (activeTab === 'stats') {
+      return [];
+    }
 
     let filteredMovies = activeTab === 'watchLater' 
       ? [...watchLater]
@@ -145,7 +211,7 @@ const Home: React.FC = () => {
   const totalPages = Math.ceil(totalResults / 10);
 
   // Handle tab change
-  const handleTabChange = useCallback((_: React.SyntheticEvent, newValue: 'search' | 'favorites' | 'watchLater') => {
+  const handleTabChange = useCallback((_: React.SyntheticEvent, newValue: 'search' | 'favorites' | 'watchLater' | 'stats') => {
     setActiveTab(newValue);
   }, []);
 
@@ -238,6 +304,118 @@ const Home: React.FC = () => {
     changePage(newPage);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [changePage, searchParams, setSearchParams]);
+
+  // --- STATS CALCULATIONS ---
+
+  const allUniqueMovies = useMemo(() => {
+    const seen = new Set<string>();
+    const list: { imdbID: string; Title: string; Year: string; Poster: string; source: 'fav' | 'wl' | 'journal' }[] = [];
+
+    favorites.forEach(m => {
+      if (!seen.has(m.imdbID)) {
+        seen.add(m.imdbID);
+        list.push({ ...m, source: 'fav' });
+      }
+    });
+
+    watchLater.forEach(m => {
+      if (!seen.has(m.imdbID)) {
+        seen.add(m.imdbID);
+        list.push({ ...m, source: 'wl' });
+      }
+    });
+
+    journalEntries.forEach(e => {
+      if (!seen.has(e.imdbID)) {
+        seen.add(e.imdbID);
+        list.push({
+          imdbID: e.imdbID,
+          Title: e.title,
+          Year: '',
+          Poster: e.poster,
+          source: 'journal'
+        });
+      }
+    });
+
+    return list;
+  }, [favorites, watchLater, journalEntries]);
+
+  const totalWatchTime = useMemo(() => {
+    let minutes = 0;
+    allUniqueMovies.forEach(movie => {
+      const detail = detailsCache[movie.imdbID];
+      const runtimeStr = detail?.Runtime || 'N/A';
+      if (runtimeStr && runtimeStr !== 'N/A') {
+        const match = runtimeStr.match(/(\d+)\s*min/);
+        if (match) {
+          minutes += parseInt(match[1]);
+        }
+      }
+    });
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return { hours, mins, totalMinutes: minutes };
+  }, [allUniqueMovies, detailsCache]);
+
+  const genreStats = useMemo(() => {
+    const counts: Record<string, number> = {};
+    let totalCount = 0;
+
+    allUniqueMovies.forEach(movie => {
+      const detail = detailsCache[movie.imdbID];
+      const genresStr = detail?.Genre || 'N/A';
+      if (genresStr && genresStr !== 'N/A') {
+        genresStr.split(',').forEach(g => {
+          const genre = g.trim();
+          if (genre && genre !== 'N/A') {
+            counts[genre] = (counts[genre] || 0) + 1;
+            totalCount++;
+          }
+        });
+      }
+    });
+
+    return Object.entries(counts)
+      .map(([name, count]) => ({
+        name,
+        count,
+        percentage: totalCount > 0 ? Math.round((count / totalCount) * 100) : 0
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5); // top 5 genres
+  }, [allUniqueMovies, detailsCache]);
+
+  const decadeStats = useMemo(() => {
+    const counts: Record<string, number> = {};
+    allUniqueMovies.forEach(movie => {
+      const detail = detailsCache[movie.imdbID] || movie;
+      const yearStr = detail.Year || '';
+      const match = yearStr.match(/^(\d{4})/);
+      if (match) {
+        const year = parseInt(match[1]);
+        const decadeStart = Math.floor(year / 10) * 10;
+        const decadeKey = `${decadeStart}s`;
+        counts[decadeKey] = (counts[decadeKey] || 0) + 1;
+      }
+    });
+
+    const sortedDecades = Object.entries(counts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const maxCount = sortedDecades.length > 0 ? Math.max(...sortedDecades.map(d => d.count)) : 1;
+    return sortedDecades.map(d => ({
+      ...d,
+      percentage: Math.round((d.count / maxCount) * 100)
+    }));
+  }, [allUniqueMovies, detailsCache]);
+
+  const averageRating = useMemo(() => {
+    if (journalEntries.length === 0) return 0.0;
+    const sum = journalEntries.reduce((acc, entry) => acc + entry.rating, 0);
+    return sum / journalEntries.length;
+  }, [journalEntries]);
 
   return (
     <Box
@@ -345,6 +523,29 @@ const Home: React.FC = () => {
                 <Tab 
                   label={`Watch Later ${watchLater.length > 0 ? `(${watchLater.length})` : ''}`}
                   value="watchLater"
+                  sx={{
+                    fontFamily: '"Outfit", sans-serif',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    borderRadius: '24px',
+                    padding: '8px 20px',
+                    minHeight: '36px',
+                    zIndex: 1,
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      color: '#ffffff',
+                    },
+                    '&.Mui-selected': {
+                      color: '#ffffff !important',
+                    },
+                  }}
+                />
+                <Tab 
+                  label="Stats 📊"
+                  value="stats"
                   sx={{
                     fontFamily: '"Outfit", sans-serif',
                     fontWeight: 600,
@@ -654,7 +855,7 @@ const Home: React.FC = () => {
             </Box>
           </Fade>
 
-          {activeTab !== 'search' && (
+          {activeTab !== 'search' && activeTab !== 'stats' && (
             <Box sx={{ mt: 4, mb: 4, textAlign: 'left' }}>
               <Typography 
                 variant="h4" 
@@ -666,7 +867,7 @@ const Home: React.FC = () => {
                   mb: 1
                 }}
               >
-                {activeTab === 'favorites' ? 'Your Favorites' : 'Watch Later list'}
+                {activeTab === 'favorites' ? 'Your Favorites' : 'Watch Later List'}
               </Typography>
               <Typography 
                 variant="body2" 
@@ -683,7 +884,519 @@ const Home: React.FC = () => {
             </Box>
           )}
 
-          {displayNoResults ? (
+          {activeTab === 'stats' ? (
+            <Fade in={activeTab === 'stats'} timeout={400}>
+              <Box sx={{ mt: 4, mb: 4, textAlign: 'left' }}>
+                <Typography 
+                  variant="h4" 
+                  component="h2" 
+                  sx={{ 
+                    fontFamily: '"Outfit", sans-serif', 
+                    fontWeight: 800, 
+                    color: '#F3F4F6',
+                    mb: 1
+                  }}
+                >
+                  Personal Cinema Analytics 📊
+                </Typography>
+                <Typography 
+                  variant="body2" 
+                  sx={{ 
+                    fontFamily: '"Inter", sans-serif', 
+                    color: '#9CA3AF',
+                    mb: 4
+                  }}
+                >
+                  An overview of your screen time, genre footprint, decades, and logs in CineLog.
+                </Typography>
+
+                {allUniqueMovies.length === 0 ? (
+                  <Box 
+                    sx={{ 
+                      textAlign: 'center', 
+                      py: 8,
+                      px: 3,
+                      backgroundColor: 'rgba(22, 26, 36, 0.45)',
+                      backdropFilter: 'blur(20px)',
+                      WebkitBackdropFilter: 'blur(20px)',
+                      borderRadius: '20px',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.3)',
+                      maxWidth: '600px',
+                      mx: 'auto'
+                    }}
+                  >
+                    <QueryStatsIcon sx={{ fontSize: 64, color: 'rgba(0, 242, 254, 0.6)', mb: 2 }} />
+                    <Typography variant="h5" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700, mb: 1.5, color: '#ffffff' }}>
+                      No Cinematic Data Yet
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontFamily: '"Inter", sans-serif', color: '#9CA3AF', mb: 3, lineHeight: 1.6 }}>
+                      Your personal analytics dashboard will populate once you begin adding movies to your Favorites, Watch Later list, or log ratings and private journals in the CineLog!
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      onClick={() => setActiveTab('search')}
+                      sx={{
+                        borderRadius: '24px',
+                        textTransform: 'uppercase',
+                        fontSize: '0.85rem',
+                        fontWeight: 600,
+                        letterSpacing: '1px',
+                        padding: '10px 28px',
+                      }}
+                    >
+                      Discover Movies
+                    </Button>
+                  </Box>
+                ) : (
+                  <Box>
+                    {/* Bento Overview Grid */}
+                    <Grid container spacing={3} sx={{ mb: 4 }}>
+                      <Grid item xs={12} sm={6} md={3}>
+                        <Box
+                          sx={{
+                            backgroundColor: 'rgba(22, 26, 36, 0.55)',
+                            backdropFilter: 'blur(20px)',
+                            border: '1px solid rgba(255, 255, 255, 0.06)',
+                            borderRadius: '16px',
+                            p: 3,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 2,
+                            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.2)',
+                            transition: 'all 0.3s ease',
+                            '&:hover': {
+                              transform: 'translateY(-4px)',
+                              boxShadow: '0 12px 24px rgba(0, 242, 254, 0.1)',
+                              borderColor: 'rgba(0, 242, 254, 0.3)',
+                            }
+                          }}
+                        >
+                          <Box sx={{ p: 1.5, borderRadius: '12px', backgroundColor: 'rgba(0, 242, 254, 0.1)', display: 'flex' }}>
+                            <MovieIcon sx={{ color: '#00F2FE' }} />
+                          </Box>
+                          <Box>
+                            <Typography variant="h4" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 800 }}>
+                              {allUniqueMovies.length}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: '#9CA3AF', fontWeight: 500 }}>
+                              Total Library Titles
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Grid>
+
+                      <Grid item xs={12} sm={6} md={3}>
+                        <Box
+                          sx={{
+                            backgroundColor: 'rgba(22, 26, 36, 0.55)',
+                            backdropFilter: 'blur(20px)',
+                            border: '1px solid rgba(255, 255, 255, 0.06)',
+                            borderRadius: '16px',
+                            p: 3,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 2,
+                            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.2)',
+                            transition: 'all 0.3s ease',
+                            '&:hover': {
+                              transform: 'translateY(-4px)',
+                              boxShadow: '0 12px 24px rgba(255, 51, 102, 0.1)',
+                              borderColor: 'rgba(255, 51, 102, 0.3)',
+                            }
+                          }}
+                        >
+                          <Box sx={{ p: 1.5, borderRadius: '12px', backgroundColor: 'rgba(255, 51, 102, 0.1)', display: 'flex' }}>
+                            <ScheduleIcon sx={{ color: '#FF3366' }} />
+                          </Box>
+                          <Box>
+                            <Typography variant="h4" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 800 }}>
+                              {totalWatchTime.hours > 0 ? `${totalWatchTime.hours}h ${totalWatchTime.mins}m` : `${totalWatchTime.totalMinutes}m`}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: '#9CA3AF', fontWeight: 500 }}>
+                              Screen Watch Time
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Grid>
+
+                      <Grid item xs={12} sm={6} md={3}>
+                        <Box
+                          sx={{
+                            backgroundColor: 'rgba(22, 26, 36, 0.55)',
+                            backdropFilter: 'blur(20px)',
+                            border: '1px solid rgba(255, 255, 255, 0.06)',
+                            borderRadius: '16px',
+                            p: 3,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 2,
+                            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.2)',
+                            transition: 'all 0.3s ease',
+                            '&:hover': {
+                              transform: 'translateY(-4px)',
+                              boxShadow: '0 12px 24px rgba(255, 215, 0, 0.1)',
+                              borderColor: 'rgba(255, 215, 0, 0.3)',
+                            }
+                          }}
+                        >
+                          <Box sx={{ p: 1.5, borderRadius: '12px', backgroundColor: 'rgba(255, 215, 0, 0.1)', display: 'flex' }}>
+                            <StarIcon sx={{ color: '#FFD700' }} />
+                          </Box>
+                          <Box>
+                            <Typography variant="h4" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 800 }}>
+                              {journalEntries.length}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: '#9CA3AF', fontWeight: 500 }}>
+                              CineLogs Recorded
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Grid>
+
+                      <Grid item xs={12} sm={6} md={3}>
+                        <Box
+                          sx={{
+                            backgroundColor: 'rgba(22, 26, 36, 0.55)',
+                            backdropFilter: 'blur(20px)',
+                            border: '1px solid rgba(255, 255, 255, 0.06)',
+                            borderRadius: '16px',
+                            p: 3,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 2,
+                            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.2)',
+                            transition: 'all 0.3s ease',
+                            '&:hover': {
+                              transform: 'translateY(-4px)',
+                              boxShadow: '0 12px 24px rgba(175, 82, 222, 0.1)',
+                              borderColor: 'rgba(175, 82, 222, 0.3)',
+                            }
+                          }}
+                        >
+                          <Box sx={{ p: 1.5, borderRadius: '12px', backgroundColor: 'rgba(175, 82, 222, 0.1)', display: 'flex' }}>
+                            <FavoriteIcon sx={{ color: '#AF52DE' }} />
+                          </Box>
+                          <Box>
+                            <Typography variant="h4" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 800 }}>
+                              {averageRating > 0 ? `${averageRating.toFixed(1)} / 5` : 'N/A'}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: '#9CA3AF', fontWeight: 500 }}>
+                              Average Journal Rating
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Grid>
+                    </Grid>
+
+                    {/* Detailed Infographics & Timelines */}
+                    <Grid container spacing={4}>
+                      {/* Left: Genre Footprint & Timeline review logs */}
+                      <Grid item xs={12} md={7}>
+                        <Box
+                          sx={{
+                            backgroundColor: 'rgba(22, 26, 36, 0.45)',
+                            backdropFilter: 'blur(20px)',
+                            borderRadius: '20px',
+                            border: '1px solid rgba(255, 255, 255, 0.06)',
+                            p: { xs: 3, md: 4 },
+                            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.3)',
+                            mb: 4
+                          }}
+                        >
+                          <Typography
+                            variant="h6"
+                            sx={{
+                              fontFamily: '"Outfit", sans-serif',
+                              fontWeight: 700,
+                              color: '#ffffff',
+                              mb: 3,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1.5
+                            }}
+                          >
+                            <FavoriteIcon sx={{ color: '#FF3366', fontSize: '1.25rem' }} />
+                            Favorite Genres Footprint
+                          </Typography>
+
+                          {genreStats.length === 0 ? (
+                            <Typography variant="body2" sx={{ color: '#9CA3AF', fontFamily: '"Inter", sans-serif', fontStyle: 'italic' }}>
+                              Gathering genre footprint data... Visit movie detail pages or favorite titles to load metadata.
+                            </Typography>
+                          ) : (
+                            <Stack spacing={3}>
+                              {genreStats.map((genre, idx) => {
+                                const gradients = [
+                                  'linear-gradient(90deg, #00F2FE 0%, #4FACFE 100%)',
+                                  'linear-gradient(90deg, #FF3366 0%, #FF5E36 100%)',
+                                  'linear-gradient(90deg, #AF52DE 0%, #E0A0FF 100%)',
+                                  'linear-gradient(90deg, #34C759 0%, #85E085 100%)',
+                                  'linear-gradient(90deg, #FF9500 0%, #FFCC00 100%)'
+                                ];
+                                const gradient = gradients[idx % gradients.length];
+
+                                return (
+                                  <Box key={genre.name}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                                      <Typography variant="body2" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 600, color: '#F3F4F6' }}>
+                                        {genre.name}
+                                      </Typography>
+                                      <Typography variant="body2" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700, color: '#00F2FE' }}>
+                                        {genre.count} {genre.count === 1 ? 'title' : 'titles'} ({genre.percentage}%)
+                                      </Typography>
+                                    </Box>
+                                    <Box sx={{ width: '100%', height: 8, backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: 4, overflow: 'hidden' }}>
+                                      <Box 
+                                        sx={{ 
+                                          height: '100%', 
+                                          width: `${genre.percentage}%`, 
+                                          background: gradient, 
+                                          borderRadius: 4,
+                                          transition: 'width 1s cubic-bezier(0.4, 0, 0.2, 1)',
+                                        }} 
+                                      />
+                                    </Box>
+                                  </Box>
+                                );
+                              })}
+                            </Stack>
+                          )}
+                        </Box>
+
+                        <Box
+                          sx={{
+                            backgroundColor: 'rgba(22, 26, 36, 0.45)',
+                            backdropFilter: 'blur(20px)',
+                            borderRadius: '20px',
+                            border: '1px solid rgba(255, 255, 255, 0.06)',
+                            p: { xs: 3, md: 4 },
+                            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.3)',
+                          }}
+                        >
+                          <Typography
+                            variant="h6"
+                            sx={{
+                              fontFamily: '"Outfit", sans-serif',
+                              fontWeight: 700,
+                              color: '#ffffff',
+                              mb: 3,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1.5
+                            }}
+                          >
+                            <StarIcon sx={{ color: '#FFD700', fontSize: '1.25rem' }} />
+                            Recent CineLog Journals
+                          </Typography>
+
+                          {journalEntries.length === 0 ? (
+                            <Typography variant="body2" sx={{ color: '#9CA3AF', fontFamily: '"Inter", sans-serif', py: 2 }}>
+                              No journal review notes logged yet. Visit any movie details page to write private logs and rate your screenings!
+                            </Typography>
+                          ) : (
+                            <Stack spacing={2.5}>
+                              {journalEntries.slice(0, 5).map(entry => (
+                                <Box
+                                  key={entry.imdbID}
+                                  sx={{
+                                    display: 'flex',
+                                    gap: 2,
+                                    p: 2,
+                                    borderRadius: '12px',
+                                    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                                    border: '1px solid rgba(255, 255, 255, 0.04)',
+                                    transition: 'all 0.3s ease',
+                                    '&:hover': {
+                                      backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                                      borderColor: 'rgba(0, 242, 254, 0.2)'
+                                    }
+                                  }}
+                                >
+                                  <Box 
+                                    component="img" 
+                                    src={entry.poster !== 'N/A' ? entry.poster : 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=300&auto=format&fit=cover'}
+                                    alt={entry.title}
+                                    sx={{
+                                      width: 60,
+                                      height: 90,
+                                      borderRadius: '6px',
+                                      objectFit: 'cover',
+                                      boxShadow: '0 4px 10px rgba(0,0,0,0.3)'
+                                    }}
+                                  />
+                                  <Box sx={{ flex: 1 }}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
+                                      <Typography variant="body1" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700, color: '#ffffff' }}>
+                                        {entry.title}
+                                      </Typography>
+                                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontWeight: 500 }}>
+                                        {entry.createdAt}
+                                      </Typography>
+                                    </Box>
+                                    <Box sx={{ display: 'flex', gap: 0.5, mb: 1 }}>
+                                      {Array.from({ length: 5 }).map((_, i) => (
+                                        <StarIcon 
+                                          key={i} 
+                                          sx={{ 
+                                            fontSize: 16, 
+                                            color: i < entry.rating ? '#FFD700' : 'rgba(255,255,255,0.1)' 
+                                          }} 
+                                        />
+                                      ))}
+                                    </Box>
+                                    <Typography variant="body2" sx={{ fontFamily: '"Inter", sans-serif', color: '#D1D5DB', fontStyle: 'italic', lineHeight: 1.5 }}>
+                                      "{entry.notes}"
+                                    </Typography>
+                                  </Box>
+                                </Box>
+                              ))}
+                            </Stack>
+                          )}
+                        </Box>
+                      </Grid>
+
+                      {/* Right: Decade Era Distribution & Insights */}
+                      <Grid item xs={12} md={5}>
+                        <Box
+                          sx={{
+                            backgroundColor: 'rgba(22, 26, 36, 0.45)',
+                            backdropFilter: 'blur(20px)',
+                            borderRadius: '20px',
+                            border: '1px solid rgba(255, 255, 255, 0.06)',
+                            p: { xs: 3, md: 4 },
+                            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.3)',
+                            mb: 4
+                          }}
+                        >
+                          <Typography
+                            variant="h6"
+                            sx={{
+                              fontFamily: '"Outfit", sans-serif',
+                              fontWeight: 700,
+                              color: '#ffffff',
+                              mb: 4,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1.5
+                            }}
+                          >
+                            <QueryStatsIcon sx={{ color: '#00F2FE', fontSize: '1.25rem' }} />
+                            Decade Era Distribution
+                          </Typography>
+
+                          {decadeStats.length === 0 ? (
+                            <Typography variant="body2" sx={{ color: '#9CA3AF', fontFamily: '"Inter", sans-serif', fontStyle: 'italic' }}>
+                              Analyzing release era datasets...
+                            </Typography>
+                          ) : (
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3.5 }}>
+                              {/* Responsive Custom CSS Chart */}
+                              <Box 
+                                sx={{ 
+                                  height: 200, 
+                                  display: 'flex', 
+                                  alignItems: 'flex-end', 
+                                  justifyContent: 'space-between',
+                                  px: 2,
+                                  pb: 1,
+                                  borderBottom: '1px solid rgba(255,255,255,0.08)',
+                                }}
+                              >
+                                {decadeStats.map(dec => (
+                                  <Box 
+                                    key={dec.name} 
+                                    sx={{ 
+                                      display: 'flex', 
+                                      flexDirection: 'column', 
+                                      alignItems: 'center',
+                                      width: '100%',
+                                      mx: 1
+                                    }}
+                                  >
+                                    <Tooltip title={`${dec.count} ${dec.count === 1 ? 'title' : 'titles'} in ${dec.name}`}>
+                                      <Box
+                                        sx={{
+                                          width: { xs: 16, sm: 24, md: 32 },
+                                          height: `${dec.percentage || 10}%`,
+                                          background: 'linear-gradient(180deg, #00F2FE 0%, rgba(0, 242, 254, 0.15) 100%)',
+                                          border: '1px solid rgba(0, 242, 254, 0.3)',
+                                          borderRadius: '6px 6px 0 0',
+                                          transition: 'all 0.3s ease',
+                                          boxShadow: '0 0 10px rgba(0, 242, 254, 0.05)',
+                                          '&:hover': {
+                                            background: 'linear-gradient(180deg, #FF3366 0%, rgba(255, 51, 102, 0.25) 100%)',
+                                            borderColor: '#FF3366',
+                                            boxShadow: '0 0 15px rgba(255, 51, 102, 0.4)',
+                                            transform: 'scaleY(1.05)'
+                                          }
+                                        }}
+                                      />
+                                    </Tooltip>
+                                    <Typography variant="caption" sx={{ mt: 1.5, fontFamily: '"Outfit", sans-serif', fontWeight: 600, color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem' }}>
+                                      {dec.name}
+                                    </Typography>
+                                  </Box>
+                                ))}
+                              </Box>
+                            </Box>
+                          )}
+                        </Box>
+
+                        <Box
+                          sx={{
+                            backgroundColor: 'rgba(22, 26, 36, 0.45)',
+                            backdropFilter: 'blur(20px)',
+                            borderRadius: '20px',
+                            border: '1px solid rgba(255, 255, 255, 0.06)',
+                            p: { xs: 3, md: 4 },
+                            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.3)',
+                          }}
+                        >
+                          <Typography
+                            variant="h6"
+                            sx={{
+                              fontFamily: '"Outfit", sans-serif',
+                              fontWeight: 700,
+                              color: '#ffffff',
+                              mb: 3,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1.5
+                            }}
+                          >
+                            <BookmarkIcon sx={{ color: '#AF52DE', fontSize: '1.25rem' }} />
+                            Cinematic Analytics Insight
+                          </Typography>
+
+                          <Typography variant="body2" sx={{ fontFamily: '"Inter", sans-serif', color: '#9CA3AF', lineHeight: 1.6, mb: 3 }}>
+                            Your cinematic footprint is expanding nicely! You currently track <strong>{favorites.length}</strong> favorites and have <strong>{watchLater.length}</strong> upcoming titles queued in your watch list.
+                          </Typography>
+                          
+                          <Box 
+                            sx={{ 
+                              p: 2, 
+                              borderRadius: '12px', 
+                              backgroundColor: 'rgba(0, 242, 254, 0.03)', 
+                              border: '1px solid rgba(0, 242, 254, 0.1)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1.5
+                            }}
+                          >
+                            <Box sx={{ fontSize: '1.5rem' }}>💡</Box>
+                            <Typography variant="caption" sx={{ fontFamily: '"Inter", sans-serif', color: 'rgba(255,255,255,0.7)', lineHeight: 1.4 }}>
+                              Log text journals and ratings in the CineLog notes dashboard of any movie details screen to build your timeline history feeds here!
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Grid>
+                    </Grid>
+                  </Box>
+                )}
+              </Box>
+            </Fade>
+          ) : displayNoResults ? (
             <ErrorMessage
               message={
                 activeTab === 'favorites'
@@ -728,4 +1441,4 @@ const Home: React.FC = () => {
   );
 };
 
-export default Home; 
+export default Home;
